@@ -44,14 +44,14 @@ def heavy_processing(img):
     return result.astype(np.uint8)
 
 def process_single_image(image_path):
+    start_task = time.time()
     img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
-        return None
-    # Menggunakan resolusi 4000x4000 sesuai setting uji coba Anda
+        return None, 0
     img = cv2.resize(img, (4000, 4000))
     result = heavy_processing(img)
-    return True 
-
+    duration = time.time() - start_task
+    return True, duration
 def get_system_memory():
     return psutil.virtual_memory().used / (1024 * 1024)
 
@@ -84,8 +84,9 @@ if __name__ == '__main__':
     start_time_s = time.time()
     
     for i, path in enumerate(image_paths):
-        print(f"    -> [Serial] Memproses gambar {i+1}/{total_images}...")
-        process_single_image(path)
+        filename = os.path.basename(path)
+        _, duration = process_single_image(path)
+        print(f"    -> [Serial] Gambar {i+1}/{total_images} ({filename}) selesai dalam {duration:.2f} detik")
         
     end_time_s = time.time()
     avg_cpu_s = monitor.stop() # Hentikan rekaman CPU
@@ -104,8 +105,12 @@ if __name__ == '__main__':
     # ==========================================
     # 2. PENDEKATAN PARALEL
     # ==========================================
-    num_cores = 4
-    print(f"[2] Menjalankan Pendekatan Paralel ({num_cores} Core CPU)...")
+    physical_cores = psutil.cpu_count(logical=False)
+    logical_cores = psutil.cpu_count(logical=True)
+    num_cores = logical_cores # Menggunakan seluruh thread yang tersedia
+
+    print(f"[2] Menjalankan Pendekatan Paralel ({num_cores} Thread/Logical Cores)...")
+    print(f"    (Info: Laptop Anda memiliki {physical_cores} Physical Cores & {logical_cores} Threads)")
     mem_before_p = get_system_memory()
     monitor.start() # Mulai rekam penggunaan CPU lagi
     start_time_p = time.time()
@@ -116,7 +121,10 @@ if __name__ == '__main__':
         completed = 0
         for future in as_completed(futures):
             completed += 1
-            print(f"    -> [Paralel] {completed}/{total_images} gambar selesai diproses...")
+            path = futures[future]
+            filename = os.path.basename(path)
+            _, duration = future.result()
+            print(f"    -> [Paralel] Gambar {completed}/{total_images} ({filename}) selesai dalam {duration:.2f} detik")
             
     end_time_p = time.time()
     avg_cpu_p = monitor.stop() # Hentikan rekaman CPU
